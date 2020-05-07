@@ -15,90 +15,91 @@ class JokeList extends Component {
       loading: false
     };
 
+    this.seenJokes = new Set(this.state.jokes.map(j => j.text))
   }
 
-  componentDidMount() {
+  async componentDidMount() {
 
-    if (!window.localStorage.getItem('jokes')) {
-      this.jokeFiller()
+    if (this.state.jokes.length === 0) {
+      this.getJokes()
     }
   }
 
-  jokeFiller = () => {
-    for (var i = 0; i < this.props.numJokesToGet; i++) {
-      axios.get('https://icanhazdadjoke.com/', {
-          headers: {
-            Accept: 'application/json '
-          }
+  getJokes = async () => {
+
+    try {
+      let jokes = [];
+      while (jokes.length < this.props.numJokesToGet){
+        let res = await axios.get('https://icanhazdadjoke.com/', {
+          headers: { Accept: 'application/json'}
         })
-        .then(res => this.setState(st => ({
-          jokes: [...st.jokes,
-            {joke: res.data.joke, id: res.data.id, upvote: 0}
-          ]
-        })))
-        .catch(err => console.log(err))
-    }
-  }
 
-  componentDidUpdate(prevProps, prevState){
-    if (prevState.length !== this.state.jokes.length) {
-      window.localStorage.setItem('jokes', JSON.stringify(this.state.jokes))
-    }
-  }
+        if (!this.seenJokes.has(res.data.joke)) {
+          jokes.push({id: uuid(), text: res.data.joke, votes: 0})
+        }
 
-  newJokes = () => {
-    window.localStorage.removeItem('jokes')
-    this.setState({ jokes: []})
-    this.jokeFiller()
-  }
-
-  toVote = (direction, idx) => {
-    const copy = this.state.jokes.slice()
-
-    if (copy.length) {
-      if (direction === 'up') {
-        copy[idx].upvote++
-      } else {
-        copy[idx].upvote--
       }
 
-      copy.sort((a, b) => a['upvote'] > b['upvote'] ? -1 : a['upvote'] < b['upvote'] ? 1 : 0)
-
-      this.setState({
-        jokes: copy
-      })
-
+      this.setState(st => ({
+        jokes: [...st.jokes, ...jokes],
+        loading: false
+      }), () => window.localStorage.setItem('jokes', JSON.stringify(this.state.jokes)))
+    } catch(err) {
+      console.log(err)
     }
+
   }
 
-  render() {
-    const { jokes } = this.state
-    const storagedJokes = (JSON.parse(window.localStorage.getItem('jokes')))
+  handleVote = (id, delta) => {
+    this.setState(st => ({
+      jokes: st.jokes.map(j =>
+        j.id === id ? {...j, votes: j.votes + delta} : j
+      )
+    }), () => window.localStorage.setItem('jokes', JSON.stringify(this.state.jokes))
+    )
+  }
 
-    if (!storagedJokes || storagedJokes.length === this.props.numJokesToGet.length) {
-      return <div>Loading</div>
+  handleClick = () => {
+    this.setState({ loading: true }, this.getJokes)
+  }
+
+
+  render() {
+
+    if (this.state.loading) {
+      return (
+        <div className='JokeList-spinner'>
+          <i className='far fa-8x fa-laugh fa-spin' />
+          <h1>Loading</h1>
+        </div>
+      )
     }
+
+    let jokes = this.state.jokes.sort((a, b) => b.votes - a.votes)
 
     return (
       <div className='JokeList'>
         <div className='JokeList-sidebar'>
-          hello
+          <h1 className='JokeList-title'>
+            <span>Dad</span>
+            Jokes
+          </h1>
+          <img src='https://assets.dryicons.com/uploads/icon/svg/8927/0eb14c71-38f2-433a-bfc8-23d9c99b3647.svg' />
+          <button onClick={this.handleClick} className='JokeList-getmore'>New Jokes</button>
         </div>
-        <ul>
-        <button onClick={() => this.newJokes()}>Click to get new jokes!</button>
-        {
-            jokes.map((joke, i) => (
-              <div className='JokeLi'>
-                <Joke
-                  joke={joke.joke}
-                  vote={joke.upvote}
-                  toVote={this.toVote}
-                  idx={i}
-                />
-              </div>
+        <div className='JokeList-jokes'>
+          {
+            jokes.map(j => (
+              <Joke
+                key={j.id}
+                votes={j.votes}
+                text={j.text}
+                upvote={() => this.handleVote(j.id, 1)}
+                downvote={() => this.handleVote(j.id, -1)}
+              />
             ))
-        }
-        </ul>
+          }
+        </div>
       </div>
     );
   }
